@@ -68,9 +68,6 @@ class VectorNode(Node):
         # CV Bridge 
         self.bridge = CvBridge()
 
-        # TF Broadcaster
-        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
-
         # Connect to Vector 
         self.get_logger().info("Connecting to Vector...")
         self.robot = anki_vector.Robot("00706c20")
@@ -107,9 +104,6 @@ class VectorNode(Node):
         # Joint states 
         self.joint_timer = self.create_timer(0.1, self.publish_joints) # 10 HZ
 
-        # Camera
-        # self.camera_timer = self.create_timer(0.1, self.publish_camera) # 
-
     
         # Subscriber for velocity commands
         self.cmd_sub = self.create_subscription(
@@ -118,26 +112,6 @@ class VectorNode(Node):
             self.cmd_vel_callback,
             10
         )
-
-
-        # LOGGING
-        # self.log_file_path = os.path.expanduser("/home/mihir/ROS2_PROJ/vector_ws/debug_logs/vector_odom_log.csv")
-        # self.log_file = open(self.log_file_path, "w", newline="")
-        # self.csv_writer = csv.writer(self.log_file)
-
-        # self.csv_writer.writerow([
-        #     "time_sec",
-        #     "dt",
-        #     "v_left",
-        #     "v_right",
-        #     "v",
-        #     # "omega",
-        #     "x",
-        #     "y",
-        #     "yaw"
-        # ])
-
-        # self.get_logger().info(f"Odom logging to: {self.log_file_path}")
 
 
     def on_new_camera_image(self, robot, event_type, event, done=None):
@@ -187,16 +161,6 @@ class VectorNode(Node):
         self.y_last = y_k
         self.theta_last = theta_k
 
-        # self.csv_writer.writerow([
-        #     now.nanoseconds * 1e-9,
-        #     dt, 
-        #     vLeft,
-        #     vRight,
-        #     v,
-        #     x_k, 
-        #     y_k, 
-        #     theta_k
-        # ])
 
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
@@ -216,22 +180,6 @@ class VectorNode(Node):
 
         self.odom_pub.publish(odom_msg)
 
-        # TF
-
-        t = TransformStamped()
-        t.header.stamp = now.to_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_footprint'
-        t.transform.translation.x = x_k
-        t.transform.translation.y = y_k
-        t.transform.translation.z = 0.0
-
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-
-        self.tf_broadcaster.sendTransform(t)
 
 
     def publish_imu(self):
@@ -240,7 +188,7 @@ class VectorNode(Node):
         # ------IMU-----
         imu_msg = Imu()
         imu_msg.header.stamp = now.to_msg()
-        imu_msg.header.frame_id = 'base_link'
+        imu_msg.header.frame_id = 'imu'
 
         # -- GYRO 
         imu_msg.angular_velocity.x = self.robot.gyro.x 
@@ -271,9 +219,9 @@ class VectorNode(Node):
 
         js = JointState()
         js.header.stamp = now.to_msg()
-        js.header.frame_id = 'base_link'
         js.name = ['base_to_head', 'base_to_lift']
         js.position = [head_angle, lift_angle]
+        js.header.frame_id = 'base_link'
         self.joint_pub.publish(js)
 
 

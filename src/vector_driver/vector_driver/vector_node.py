@@ -65,6 +65,9 @@ class VectorNode(Node):
         # self.batt_pub = self.create_publisher(BatteryState, '/battery_state', 10)
         self.camera_pub = self.create_publisher(Image, '/camera/image_raw', camera_qos)
 
+        # TF Broadcaster 
+        self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
+
         # CV Bridge 
         self.bridge = CvBridge()
 
@@ -115,6 +118,11 @@ class VectorNode(Node):
 
 
     def on_new_camera_image(self, robot, event_type, event, done=None):
+
+        # if event.image is None:
+        #     self.get_logger().warn("Recieved camera but no image")
+        #     return
+        # self.get_logger().info("HELLOO")
 
         frame_np = np.array(event.image)
         frame_np = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
@@ -180,6 +188,20 @@ class VectorNode(Node):
 
         self.odom_pub.publish(odom_msg)
 
+        t = TransformStamped()
+        t.header.stamp = now.to_msg()
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'base_footprint'
+        t.transform.translation.x = x_k
+        t.transform.translation.y = y_k
+        t.transform.translation.z = 0.0
+
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+
+        self.tf_broadcaster.sendTransform(t)
 
 
     def publish_imu(self):
@@ -191,8 +213,8 @@ class VectorNode(Node):
         imu_msg.header.frame_id = 'imu'
 
         # -- GYRO 
-        imu_msg.angular_velocity.x = self.robot.gyro.x 
-        imu_msg.angular_velocity.y = self.robot.gyro.y 
+        imu_msg.angular_velocity.x = 0.0 # Don't care for it
+        imu_msg.angular_velocity.y = 0.0  # Don't care for it
         imu_msg.angular_velocity.z = self.robot.gyro.z 
         
         # -- ACCEL

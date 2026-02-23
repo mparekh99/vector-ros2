@@ -94,6 +94,16 @@ def generate_launch_description():
                         # "head_angle_offset": 0.0,
                     }
                 ],
+            ),
+
+            # Static for base_footprint issues
+
+            Node(
+                package="tf2_ros",
+                executable="static_transform_publisher",
+                name="base_link_to_footprint",
+                output="screen",
+                arguments=["0", "0", "0", "0", "0", "0", "base_footprint", "base_link"],
             )
         ]
     )

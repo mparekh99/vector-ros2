@@ -10,7 +10,7 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
 	('share/' + package_name, ['package.xml']),
-        ('share/' + package_name + '/launch', ['launch/vector_nav2_launch.py']),
+        ('share/' + package_name + '/launch', ['launch/localization.launch.py']),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -26,9 +26,10 @@ setup(
     entry_points={
         'console_scripts': [
         	'vector_node = vector_driver.vector_node:main',
-		# 'drive_square = vector_driver.drive_square:main',
+		'drive_square = vector_driver.drive_square:main',
 		# 'teleop = vector_driver.teleop:main',
-        'marker_localization_node = vector_driver.marker_localization_node:main'
+        'marker_localization_node = vector_driver.marker_localization_node:main',
+	# 'workspace_visualizer_node = vector_driver.workspace_visualizer_node:main'
 	],
     },
 )

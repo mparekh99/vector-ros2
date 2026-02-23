@@ -6,8 +6,8 @@ from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from rclpy.qos import qos_profile_sensor_data
 from tf2_ros import TransformBroadcaster, Buffer, TransformListener
 
-from geometry_msgs.msg import PoseStamped
-from sensor_msgs.msg import CameraInfo, Image, TransformStamped
+from geometry_msgs.msg import TransformStamped, PoseStamped, PoseWithCovarianceStamped
+from sensor_msgs.msg import CameraInfo, Image
 
 from tf_transformations import quaternion_from_euler
 
@@ -58,7 +58,7 @@ class Marker_Localization_Node(Node):
         # Publishers 
         self.marker_raw_pub = self.create_publisher(PoseStamped, '/camera/marker_raw', camera_qos)
         self.info_pub = self.create_publisher(CameraInfo, '/camera/info', camera_qos)
-        self.marker_global_pub = self.create_publisher(PoseStamped, '/camera/marker_global', camera_qos)
+        self.pose_msg_pub = self.create_publisher(PoseWithCovarianceStamped, '/camera/pose_msg', camera_qos)
 
         # World INIT
         self.world = Marker_World()
@@ -85,11 +85,6 @@ class Marker_Localization_Node(Node):
             decode_sharpening=0.25,
             debug=0
         )
-
-        # self.tf_broadcaster = TransformBroadcaster(self)
-        # self.tf_buffer = Buffer()
-        # self.tf_listener = TransformListener(self.tf_buffer, self)
-
 
 
     def invert_homogeneous(self, T):
@@ -136,79 +131,74 @@ class Marker_Localization_Node(Node):
 
         if not tags:
             return
+        
+        pose_candidates = []
 
-        # Greedily pick first tag detected 
+        for tag in tags:
+            tag_id = tag.tag_id 
+            if tag_id not in self.world.marker_transforms:
+                self.get_logger().warn(f"Unknown tag ID {tag_id}")
+                continue 
 
-        tag = tags[0]
+            # Build pose 
+            marker_in_camera = np.eye(4)
+            marker_in_camera[:3,:3] = tag.pose_R # rvec 
+            marker_in_camera[:3, 3] = tag.pose_t.flatten() # tvec
 
-        # Build pose 
-        marker_in_camera = np.eye(4)
-        marker_in_camera[:3,:3] = tag.pose_R # rvec 
-        marker_in_camera[:3, 3] = tag.pose_t.flatten() # tvec
+            # Marker -> global
+            # Frame Transformation
+            marker = self.world.marker_transforms[tag.tag_id]
 
-        # Publish PoseStamped 
-        pose_raw = PoseStamped()
-        pose_raw.header.stamp = msg.header.stamp
-        pose_raw.header.frame_id = 'map'
+            fixed_pos, fixed_rot = marker["pos"], marker["rot"]
 
-        pose_raw.pose.position.x = marker_in_camera[0,3]
-        pose_raw.pose.position.y = marker_in_camera[1,3]
-        pose_raw.pose.position.z = marker_in_camera[2,3]
+            marker_in_global = np.eye(4)
+            marker_in_global[:3, :3] = fixed_rot
+            marker_in_global[:3, 3] = fixed_pos
 
-        r = R.from_matrix(marker_in_camera[:3,:3])
+            # Camera -> global 
+            camera_in_marker = self.invert_homogeneous(marker_in_camera)
+
+            camera_in_global = marker_in_global @ camera_in_marker
+
+            distance_to_marker = np.linalg.norm(camera_in_global[:3,3] - fixed_pos)
+            pose_candidates.append((distance_to_marker, tag_id, camera_in_global))
+
+
+        if not pose_candidates:
+            return
+        
+        # Pick closest marker
+        _, best_tag_id, best_camera_in_global = min(pose_candidates, key=lambda x:x[0])
+
+        r = R.from_matrix(best_camera_in_global[:3,:3])
         q = r.as_quat() # x,y,z, w
-        pose_raw.pose.orientation.x = q[0]
-        pose_raw.pose.orientation.y = q[1]
-        pose_raw.pose.orientation.z = q[2]
-        pose_raw.pose.orientation.w = q[3]
-
-        self.marker_raw_pub.publish(pose_raw)
-
-        # Publish camera info
-        info_msg = CameraInfo()
-        info_msg.header.stamp = msg.header.stamp 
-        info_msg.header.frame_id = 'camera_link'
-        info_msg.k = [fx, 0.0, cx, 0.0, fy, cy, 0.0, 0.0, 1.0]
-        self.info_pub.publish(info_msg)
-
-        # Frame Transformation
-        marker = self.world.marker_transforms[tag.tag_id]
-        fixed_pos, fixed_rot = marker["pos"], marker["rot"]
-
-        marker_in_global = np.eye(4)
-        marker_in_global[:3, :3] = fixed_rot
-        marker_in_global[:3, 3] = fixed_pos
-
-        camera_in_marker = self.invert_homogeneous(marker_in_camera)
-
-        camera_in_global = marker_in_global @ camera_in_marker
 
 
-        pos = camera_in_global[:3, 3]
+        pose_msg = PoseWithCovarianceStamped()
+        pose_msg.header.stamp = msg.header.stamp
+        pose_msg.header.frame_id = 'map'
 
+        pose_msg.pose.pose.position.x = best_camera_in_global[0,3]
+        pose_msg.pose.pose.position.y = best_camera_in_global[1,3]
+        pose_msg.pose.pose.position.z = best_camera_in_global[2,3]
+        
+        pose_msg.pose.pose.orientation.x = q[0]
+        pose_msg.pose.pose.orientation.y = q[1]
+        pose_msg.pose.pose.orientation.z = q[2]
+        pose_msg.pose.pose.orientation.w = q[3]
 
-        # Euclidian Dist 
-        distance_to_tag = np.linalg.norm(pos - fixed_pos)
+        # Simple Covariance
+        cov = [0.01, 0.0, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.01, 0.0, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.01, 0.0, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.01, 0.0, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.01, 0.0,
+                0.0, 0.0, 0.0, 0.0, 0.0, 0.01]
 
-        pose_global = PoseStamped()
-        pose_global.header.stamp = msg.header.stamp
-        pose_global.header.frame_id = 'map'
+        pose_msg.pose.covariance = cov
 
-        pose_global.pose.position.x = camera_in_global[0,3]
-        pose_global.pose.position.y = camera_in_global[1,3]
-        pose_global.pose.position.z = camera_in_global[2,3]
+        self.pose_msg_pub.publish(pose_msg)
 
-        r = R.from_matrix(camera_in_global[:3,:3])
-        q = r.as_quat() # x,y,z, w
-        pose_global.pose.orientation.x = q[0]
-        pose_global.pose.orientation.y = q[1]
-        pose_global.pose.orientation.z = q[2]
-        pose_global.pose.orientation.w = q[3]
-
-        self.marker_global_pub.publish(pose_global)
-
-
-    # Publish translated poses:
 
 
 

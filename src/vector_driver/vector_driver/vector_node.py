@@ -30,8 +30,8 @@ from cv_bridge import CvBridge
 import threading 
 import time
 # Constants 
-WHEELBASE = 0.0460375 # in meters 
-
+WHEELBASE = 0.05 # in meters 
+# WHEELBASE = 0.06
 # Config from launch file
 LIFT_SCALE = -13.7931034483
 LIFT_OFFSET = 0.4413793103
@@ -41,8 +41,7 @@ LIFT_MAX_M = 0.09
 HEAD_SCALE = -1.0
 HEAD_OFFSET = 0.0
 
-# IMU_ACCEL_SCALE = 0.001
-# IMU_GYRO_SCALE = 1.0
+
 MAX_WHEEL_SPEED_MMPS = 230
 
 
@@ -117,6 +116,8 @@ class VectorNode(Node):
         )
 
 
+
+
     def on_new_camera_image(self, robot, event_type, event, done=None):
 
         # if event.image is None:
@@ -149,59 +150,55 @@ class VectorNode(Node):
 
 
     def publish_odom(self):
+
         now = self.get_clock().now()
-        dt = (now - self.last_time).nanoseconds * 1e-9 # convert to seconds 
+        dt = (now - self.last_time).nanoseconds * 1e-9 # convert to seconds
         self.last_time = now
-
-        # Position & Convert mm/s to m/s 
-        vLeft = self.robot.left_wheel_speed_mmps / 1000.0
-        vRight = self.robot.right_wheel_speed_mmps / 1000.0  
-
-        v = (vRight + vLeft) / 2.0   # Linear Velocity m/s 
-        theta_k = self.theta_last + self.robot.gyro.z * dt
-        # Integrate 
-        x_k = self.x_last + v * math.cos(self.theta_last) * dt 
-        y_k = self.y_last + v * math.sin(self.theta_last) * dt
-
-        q = quaternion_from_euler(0,0,theta_k)
-
-        self.x_last = x_k
-        self.y_last = y_k
-        self.theta_last = theta_k
 
 
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
         odom_msg.header.frame_id = 'odom'
         odom_msg.child_frame_id = 'base_footprint'
-
-        odom_msg.pose.pose.position.x = x_k
-        odom_msg.pose.pose.position.y = y_k
-        odom_msg.pose.pose.position.z = 0.0 # Doesn't matter for us
+        odom_msg.pose.pose.position.x = self.robot.pose.position.x * 0.001
+        odom_msg.pose.pose.position.y = self.robot.pose.position.y * 0.001
+        odom_msg.pose.pose.position.z = self.robot.pose.position.z * 0.001
+        q = quaternion_from_euler(.0, .0, self.robot.pose_angle_rad)
         odom_msg.pose.pose.orientation.x = q[0]
         odom_msg.pose.pose.orientation.y = q[1]
         odom_msg.pose.pose.orientation.z = q[2]
         odom_msg.pose.pose.orientation.w = q[3]
+        odom_msg.pose.covariance = np.diag([1e-2, 1e-2, 1e-2, 1e3, 1e3, 1e-1]).ravel()
+        
+        # Computer Twist (lin and angular vels)
+
+        vLeft = self.robot.left_wheel_speed_mmps / 1000.0
+        vRight = self.robot.right_wheel_speed_mmps / 1000.0
+
+        v = (vRight + vLeft) / 2.0 # m/s 
+        omega = (vRight - vLeft) / WHEELBASE
 
         odom_msg.twist.twist.linear.x = v
-        odom_msg.twist.twist.angular.z = self.robot.gyro.z
+        odom_msg.twist.twist.angular.z = omega
+        odom_msg.twist.covariance = np.diag([1e-2, 1e3, 1e3, 1e3, 1e3, 1e-2]).ravel()
 
         self.odom_pub.publish(odom_msg)
 
-        t = TransformStamped()
-        t.header.stamp = now.to_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_footprint'
-        t.transform.translation.x = x_k
-        t.transform.translation.y = y_k
-        t.transform.translation.z = 0.0
+        # t = TransformStamped()
+        # t.header.stamp = now.to_msg()
+        # t.header.frame_id = 'odom'
+        # t.child_frame_id = 'base_footprint'
+        # t.transform.translation.x = self.robot.pose.position.x * 0.001
+        # t.transform.translation.y = self.robot.pose.position.y * 0.001
+        # t.transform.translation.z = self.robot.pose.position.z * 0.001
 
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
+        # t.transform.rotation.x = q[0]
+        # t.transform.rotation.y = q[1]
+        # t.transform.rotation.z = q[2]
+        # t.transform.rotation.w = q[3]
 
-        self.tf_broadcaster.sendTransform(t)
+        # self.tf_broadcaster.sendTransform(t)  # COMMENTED OUT BC local-ekf-node will publish 
+        # odom->base_footprint with filtered odometry 
 
 
     def publish_imu(self):
@@ -212,15 +209,20 @@ class VectorNode(Node):
         imu_msg.header.stamp = now.to_msg()
         imu_msg.header.frame_id = 'imu'
 
+        imu_msg.orientation.w = self.robot.pose.rotation.q0
+        imu_msg.orientation.x = self.robot.pose.rotation.q1
+        imu_msg.orientation.y = self.robot.pose.rotation.q2
+        imu_msg.orientation.z = self.robot.pose.rotation.q3
+
         # -- GYRO 
-        imu_msg.angular_velocity.x = 0.0 # Don't care for it
-        imu_msg.angular_velocity.y = 0.0  # Don't care for it
+        imu_msg.angular_velocity.x = self.robot.gyro.x
+        imu_msg.angular_velocity.y = self.robot.gyro.y
         imu_msg.angular_velocity.z = self.robot.gyro.z 
         
         # -- ACCEL
-        imu_msg.linear_acceleration.x = self.robot.accel.x 
-        imu_msg.linear_acceleration.y = self.robot.accel.y 
-        imu_msg.linear_acceleration.z = self.robot.accel.z 
+        imu_msg.linear_acceleration.x = self.robot.accel.x * 0.001 # from mm/sec^2 to m/sec^2
+        imu_msg.linear_acceleration.y = self.robot.accel.y * 0.001  
+        imu_msg.linear_acceleration.z = self.robot.accel.z * 0.001
         
         self.imu_pub.publish(imu_msg)
 

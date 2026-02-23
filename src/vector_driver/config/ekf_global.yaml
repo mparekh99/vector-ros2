@@ -1,0 +1,37 @@
+## EKF CONFIG FILE ###
+ekf_global:
+  ros__parameters:
+    frequency: 30.0            # Hz, new estimate 30 times every second
+    sensor_timeout: 0.2
+    two_d_mode: true           # 2D PLANE
+    publish_tf: true           # Broadcast to /tf topic
+
+    map_frame: map             # Pos in overall env
+    odom_frame: odom           # ODOM
+    base_link_frame: base_footprint
+    world_frame: map
+
+
+    # Odometry input (from vector_node)
+    odom0: /odometry/local
+    odom0_config: [true, true, false,
+                   false, false, true,
+                   true, false, false,
+                   false, false, true,
+                   false, false, false]
+
+  #               [x_pos   , y_pos    , z_pos,
+  #                roll    , pitch    , yaw  ,
+  #                x_vel   , y_vel    , z_vel,
+  #                roll_vel, pitch_vel, yaw_vel,
+  #                x_accel,  y_accel  , z_accel]
+
+    # AprilTag global pose
+    pose0: /camera/pose_msg               # PoseWithCovarianceStamped
+    pose0_config: [true, true, false,
+                   false, false, true,
+                   false, false, false,
+                   false, false, false,
+                   false, false, false]
+# MAP -> ODOM
+

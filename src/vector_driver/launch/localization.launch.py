@@ -1,6 +1,6 @@
 from launch import LaunchDescription
 from launch_ros.actions import Node
-from launch.actions import TimerAction, ExecuteProcess
+from launch.actions import TimerAction, Shutdown
 
 def generate_launch_description():
     return LaunchDescription([
@@ -28,6 +28,21 @@ def generate_launch_description():
             remappings=[('odometry/filtered', 'odometry/local')]
         ),
 
+
+        Node(
+            package='vector_driver',
+            executable='test_logger_node',
+            name='test_logger_node',
+            output='screen',
+        ),
+
+        Node(
+            package='vector_driver',
+            executable='drive_square',
+            name='drive_square',
+            output='screen',
+        ),
+
         Node(
             package='robot_localization',
             executable='ekf_node',
@@ -36,5 +51,11 @@ def generate_launch_description():
             parameters=['/home/mihir/ROS2_PROJ/vector_ws/src/vector_driver/config/ekf_global.yaml'],
             remappings=[('odometry/filtered', 'odometry/global')]
         ),
+
+        # Shut down after 10 seconds 
+        TimerAction(
+            period=10.0, #seconds
+            actions=[Shutdown()]
+        )
 
     ])

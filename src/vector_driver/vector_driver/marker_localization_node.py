@@ -56,8 +56,8 @@ class Marker_Localization_Node(Node):
         self.dist = np.array([[0.33015985, -0.67084208, 0.6815479, -0.34481678]])
 
         # Publishers 
-        self.marker_raw_pub = self.create_publisher(PoseStamped, '/camera/marker_raw', camera_qos)
-        self.info_pub = self.create_publisher(CameraInfo, '/camera/info', camera_qos)
+        # self.marker_raw_pub = self.create_publisher(PoseStamped, '/camera/marker_raw', camera_qos)
+        # self.info_pub = self.create_publisher(CameraInfo, '/camera/info', camera_qos)
         self.pose_msg_pub = self.create_publisher(PoseWithCovarianceStamped, '/camera/pose_msg', camera_qos)
 
         # World INIT
@@ -178,9 +178,9 @@ class Marker_Localization_Node(Node):
         pose_msg.header.stamp = msg.header.stamp
         pose_msg.header.frame_id = 'map'
 
-        pose_msg.pose.pose.position.x = best_camera_in_global[0,3]
-        pose_msg.pose.pose.position.y = best_camera_in_global[1,3]
-        pose_msg.pose.pose.position.z = best_camera_in_global[2,3]
+        pose_msg.pose.pose.position.x = best_camera_in_global[0,3] * 0.001 #CONVERT FROM MM to METERS!!!
+        pose_msg.pose.pose.position.y = best_camera_in_global[1,3] * 0.001
+        pose_msg.pose.pose.position.z = best_camera_in_global[2,3] * 0.001
         
         pose_msg.pose.pose.orientation.x = q[0]
         pose_msg.pose.pose.orientation.y = q[1]

@@ -20,6 +20,7 @@ from scipy.spatial.transform import Rotation as R
 
 import anki_vector
 from anki_vector import events
+from vector_driver.utils import wrap_angle_pi
 import math 
 import csv
 import os
@@ -57,8 +58,8 @@ class VectorNode(Node):
         )
 
         # ROS 2 Publishers 
-        # self.imu_pub = self.create_publisher(Imu, '/imu/data', 10)
-        self.imu_pub = self.create_publisher(Imu, '/imu/data', qos_profile_sensor_data)
+        self.imu_pub = self.create_publisher(Imu, '/imu/data', 10)
+        # self.imu_pub = self.create_publisher(Imu, '/imu/data', qos_profile_sensor_data)
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
         self.joint_pub = self.create_publisher(JointState, '/joint_states', 10)
         # self.batt_pub = self.create_publisher(BatteryState, '/battery_state', 10)
@@ -88,9 +89,9 @@ class VectorNode(Node):
     
 
         # State variables for integration
-        self.x_last = 0.0
-        self.y_last = 0.0
-        self.theta_last = math.pi / 2
+        self.x = 0.0
+        self.y = 0.0
+        self.theta = math.pi / 2
         self.last_time = self.get_clock().now() # ROS2 time
 
         # # Timer to periodically publish
@@ -151,54 +152,62 @@ class VectorNode(Node):
 
     def publish_odom(self):
 
+        # GENERAL ODOMETRY I AM CALCULATING IN METERS NoT MM!!! 
+
         now = self.get_clock().now()
         dt = (now - self.last_time).nanoseconds * 1e-9 # convert to seconds
         self.last_time = now
+
+        vLeft = self.robot.left_wheel_speed_mmps / 1000.0
+        vRight = self.robot.right_wheel_speed_mmps / 1000.0
+
+        v = (vRight + vLeft) / 2.0 # m/s 
+
+        theta_k = self.theta + self.robot.gyro.z *dt
+        theta_k = wrap_angle_pi(theta_k)
+
+        self.x = self.x + v * math.cos(theta_k) * dt
+        self.y = self.y + v * math.sin(theta_k) * dt
+        self.theta = theta_k
+
 
 
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
         odom_msg.header.frame_id = 'odom'
         odom_msg.child_frame_id = 'base_footprint'
-        odom_msg.pose.pose.position.x = self.robot.pose.position.x * 0.001
-        odom_msg.pose.pose.position.y = self.robot.pose.position.y * 0.001
-        odom_msg.pose.pose.position.z = self.robot.pose.position.z * 0.001
-        q = quaternion_from_euler(.0, .0, self.robot.pose_angle_rad)
+        odom_msg.pose.pose.position.x = self.x
+        odom_msg.pose.pose.position.y = self.y
+        odom_msg.pose.pose.position.z = 0.0
+        q = quaternion_from_euler(.0, .0, self.theta)
         odom_msg.pose.pose.orientation.x = q[0]
         odom_msg.pose.pose.orientation.y = q[1]
         odom_msg.pose.pose.orientation.z = q[2]
         odom_msg.pose.pose.orientation.w = q[3]
-        odom_msg.pose.covariance = np.diag([1e-2, 1e-2, 1e-2, 1e3, 1e3, 1e-1]).ravel()
-        
-        # Computer Twist (lin and angular vels)
-
-        vLeft = self.robot.left_wheel_speed_mmps / 1000.0
-        vRight = self.robot.right_wheel_speed_mmps / 1000.0
-
-        v = (vRight + vLeft) / 2.0 # m/s 
-        omega = (vRight - vLeft) / WHEELBASE
 
         odom_msg.twist.twist.linear.x = v
-        odom_msg.twist.twist.angular.z = omega
-        odom_msg.twist.covariance = np.diag([1e-2, 1e3, 1e3, 1e3, 1e3, 1e-2]).ravel()
+        odom_msg.twist.twist.angular.z = self.robot.gyro.z
+
+        odom_msg.twist.covariance = np.diag([1e-2,1e3, 1e3,1e3, 1e3, 1e-2]).ravel()
+
+        t = TransformStamped()
+        t.header.stamp = now.to_msg()
+        t.header.frame_id = 'odom'
+        t.child_frame_id = 'base_footprint'
+        t.transform.translation.x = self.x
+        t.transform.translation.y = self.y
+        t.transform.translation.z = 0.0
+        t.transform.rotation.x = q[0]
+        t.transform.rotation.y = q[1]
+        t.transform.rotation.z = q[2]
+        t.transform.rotation.w = q[3]
+        self.tf_broadcaster.sendTransform(t)
+
+
+        #(vRight - vLeft) / WHEELBASE didn't give good values 
+        
 
         self.odom_pub.publish(odom_msg)
-
-        # t = TransformStamped()
-        # t.header.stamp = now.to_msg()
-        # t.header.frame_id = 'odom'
-        # t.child_frame_id = 'base_footprint'
-        # t.transform.translation.x = self.robot.pose.position.x * 0.001
-        # t.transform.translation.y = self.robot.pose.position.y * 0.001
-        # t.transform.translation.z = self.robot.pose.position.z * 0.001
-
-        # t.transform.rotation.x = q[0]
-        # t.transform.rotation.y = q[1]
-        # t.transform.rotation.z = q[2]
-        # t.transform.rotation.w = q[3]
-
-        # self.tf_broadcaster.sendTransform(t)  # COMMENTED OUT BC local-ekf-node will publish 
-        # odom->base_footprint with filtered odometry 
 
 
     def publish_imu(self):

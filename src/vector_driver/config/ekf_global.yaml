@@ -12,6 +12,10 @@ ekf_global:
     world_frame: map
 
 
+    x_init: 0.0
+    y_init: 0.0
+    theta_init: 1.5708   # radians init to look forwards 
+
     # Odometry input (from vector_node)
     odom0: /odometry/local
     odom0_config: [true, true, false,
@@ -27,7 +31,7 @@ ekf_global:
   #                x_accel,  y_accel  , z_accel]
 
     # AprilTag global pose
-    pose0: /camera/pose_msg               # PoseWithCovarianceStamped
+    pose0: /camera/pose_filtered               # PoseWithCovarianceStamped
     pose0_config: [true, true, false,
                    false, false, true,
                    false, false, false,

@@ -26,11 +26,13 @@ setup(
     entry_points={
         'console_scripts': [
         	'vector_node = vector_driver.vector_node:main',
-		'drive_square = vector_driver.drive_square:main',
-        'test_logger_node = vector_driver.test_logger_node:main',
-		# 'teleop = vector_driver.teleop:main',
-        'marker_localization_node = vector_driver.marker_localization_node:main',
-	# 'workspace_visualizer_node = vector_driver.workspace_visualizer_node:main'
+            'drive_square = vector_driver.drive_square:main',
+            # 'test_logger_node = vector_driver.test_logger_node:main',
+            # 'teleop = vector_driver.teleop:main',
+            'marker_localization_node = vector_driver.marker_localization_node:main',
+            'ekf_node = vector_driver.ekf_node:main',
+            # 'multi_topic_logger = vector_driver.multi_topic_logger:main',
+	        # 'workspace_visualizer_node = vector_driver.workspace_visualizer_node:main'
 	],
     },
 )

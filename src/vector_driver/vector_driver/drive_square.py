@@ -69,7 +69,7 @@ def drive_forward(robot, distance_mm):
 def do_nothing(robot):
     # Stay stiill
 
-    time.sleep(0.01)
+    time.sleep(3)
 
 # ============================
 # Timed wrapper
@@ -119,6 +119,7 @@ def main():
         # try:
         #     while True:
         # turn_90_deg(robot)
+        do_nothing(robot)
         drive_forward(robot, 100)
                 # do_nothing(robot)  # just sleep in a tight loop
         # except KeyboardInterrupt:

@@ -128,11 +128,15 @@ class EKFNode(Node):
             pose_msg.header.stamp = msg.header.stamp
             pose_msg.header.frame_id = 'map'
 
-            pose_msg.pose.position.x = valid_reading[0]
-            pose_msg.pose.position.y = valid_reading[1]
+            x_ros = valid_reading[1]
+            y_ros = -1 * valid_reading[0]
+            theta_ros = wrap_angle_pi(valid_reading[2] - math.pi)
+
+            pose_msg.pose.position.x = x_ros
+            pose_msg.pose.position.y = y_ros
             pose_msg.pose.position.z = 0.0
             
-            q = quaternion_from_euler(.0, .0, valid_reading[2])
+            q = quaternion_from_euler(.0, .0, theta_ros)
             pose_msg.pose.orientation.x = q[0]
             pose_msg.pose.orientation.y = q[1]
             pose_msg.pose.orientation.z = q[2]
@@ -194,12 +198,14 @@ class EKFNode(Node):
         # Convert to ROS Frame (ROS2 like x forward, y left) 
         # I currently did evyerthing with x right and y forward
 
-    
+        x_ros = self.kf.y_last
+        y_ros = -1 * self.kf.x_last
+        theta_ros = wrap_angle_pi(self.kf.theta_last - math.pi/2)
 
-        t.transform.translation.x = self.kf.x_last
-        t.transform.translation.y = self.kf.y_last
+        t.transform.translation.x = x_ros
+        t.transform.translation.y = y_ros
         t.transform.translation.z = 0.0
-        q = quaternion_from_euler(.0, .0, self.kf.theta_last)
+        q = quaternion_from_euler(.0, .0, theta_ros)
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]
         t.transform.rotation.z = q[2]

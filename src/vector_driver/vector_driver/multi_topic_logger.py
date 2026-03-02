@@ -3,21 +3,20 @@
 import rclpy
 from rclpy.node import Node
 from nav_msgs.msg import Odometry
-from geometry_msgs.msg import PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseWithCovarianceStamped, PoseStamped
+from tf2_ros import Buffer, TransformListener
+from rclpy.time import Time
 import csv
 import os
 from datetime import datetime
 from tf_transformations import euler_from_quaternion
 from rclpy.qos import qos_profile_sensor_data
 
-
 def quaternion_to_yaw(q):
     euler = euler_from_quaternion([q.x, q.y, q.z, q.w])
     return euler[2]
 
-
 class MultiTopicLogger(Node):
-
     def __init__(self):
         super().__init__('multi_topic_logger')
 
@@ -30,15 +29,13 @@ class MultiTopicLogger(Node):
         self.csv_file = open(self.csv_file_path, 'w', newline='')
         self.csv_writer = csv.writer(self.csv_file)
 
-        # Header
+        # CSV Header
         self.csv_writer.writerow([
             'time',
             'topic',
             'x',
             'y',
             'yaw',
-            'lin_vel',
-            'ang_vel'
         ])
 
         # Subscribers
@@ -50,44 +47,41 @@ class MultiTopicLogger(Node):
         )
 
         self.create_subscription(
-            PoseWithCovarianceStamped,
-            '/camera/pose_filtered',
+            PoseStamped,
+            '/camera/filtered',
             self.camera_filtered_callback,
             qos_profile_sensor_data
         )
 
         self.create_subscription(
             Odometry,
-            '/odometry/local',
-            self.odom_local_callback,
+            '/odom',
+            self.odom_callback,
             10
         )
 
-        self.create_subscription(
-            Odometry,
-            '/odometry/global',
-            self.odom_global_callback,
-            10
-        )
+        # TF listener for map -> odom
+        self.tf_buffer = Buffer()
+        self.tf_listener = TransformListener(self.tf_buffer, self)
+
+        # Timer to log TF every 20 Hz
+        self.tf_timer = self.create_timer(0.05, self.log_map_to_odom)
 
         self.get_logger().info(
             f"Logging started. Writing to {self.csv_file_path}"
         )
 
-    # -------- Logging helpers --------
+    # -------- Helpers --------
 
     def current_time(self):
         now = self.get_clock().now().to_msg()
         return now.sec + now.nanosec * 1e-9
 
     def log_pose_stamped(self, topic_name, msg):
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
+        x = msg.pose.pose.position.x * 1000
+        y = msg.pose.pose.position.y * 1000 
         yaw = quaternion_to_yaw(msg.pose.pose.orientation)
 
-        # No velocity in PoseStamped
-        lin_vel = 0.0
-        ang_vel = 0.0
 
         self.csv_writer.writerow([
             self.current_time(),
@@ -95,17 +89,12 @@ class MultiTopicLogger(Node):
             x,
             y,
             yaw,
-            lin_vel,
-            ang_vel
         ])
 
     def log_odometry(self, topic_name, msg):
-        x = msg.pose.pose.position.x
-        y = msg.pose.pose.position.y
+        x = msg.pose.pose.position.x * 1000
+        y = msg.pose.pose.position.y * 1000
         yaw = quaternion_to_yaw(msg.pose.pose.orientation)
-
-        lin_vel = msg.twist.twist.linear.x
-        ang_vel = msg.twist.twist.angular.z
 
         self.csv_writer.writerow([
             self.current_time(),
@@ -113,8 +102,6 @@ class MultiTopicLogger(Node):
             x,
             y,
             yaw,
-            lin_vel,
-            ang_vel
         ])
 
     # -------- Callbacks --------
@@ -123,13 +110,47 @@ class MultiTopicLogger(Node):
         self.log_pose_stamped('/camera/pose_msg', msg)
 
     def camera_filtered_callback(self, msg):
-        self.log_pose_stamped('/camera/pose_filtered', msg)
+        x = msg.pose.position.x * 1000
+        y = msg.pose.position.y * 1000
+        q = msg.pose.orientation
+        yaw = quaternion_to_yaw(q)
 
-    def odom_local_callback(self, msg):
-        self.log_odometry('/odometry/local', msg)
+        self.csv_writer.writerow([
+            self.current_time(),
+            '/camera/filtered',
+            x,
+            y,
+            yaw,
+        ])
 
-    def odom_global_callback(self, msg):
-        self.log_odometry('/odometry/global', msg)
+    def odom_callback(self, msg):
+        self.log_odometry('/odom', msg)
+
+    # -------- TF Logging --------
+
+    def log_map_to_odom(self):
+        try:
+            transform = self.tf_buffer.lookup_transform(
+                'map',
+                'odom',
+                Time()
+            )
+
+            t = transform.transform.translation
+            r = transform.transform.rotation
+            yaw = quaternion_to_yaw(r)
+
+            self.csv_writer.writerow([
+                self.current_time(),
+                'tf_map_to_odom',
+                t.x * 1000,
+                t.y * 1000,
+                yaw,
+            ])
+
+        except Exception:
+            # TF not ready yet
+            pass
 
     # -------- Cleanup --------
 
@@ -139,7 +160,6 @@ class MultiTopicLogger(Node):
         self.get_logger().info(
             f"CSV file saved: {self.csv_file_path}"
         )
-
 
 def main(args=None):
     rclpy.init(args=args)
@@ -152,7 +172,6 @@ def main(args=None):
     finally:
         node.destroy_node()
         rclpy.shutdown()
-
 
 if __name__ == '__main__':
     main()

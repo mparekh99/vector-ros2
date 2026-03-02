@@ -9,8 +9,8 @@ class KalmanFilter:
         # self.P_last = np.diag([2.0, 2.0, np.deg2rad(15.0)])**2  # slightly more uncertainty to allow for corrections
 
         self.P_last = np.diag([
-            1.0,  # 1 mm² variance in X (std dev = 1 mm)
-            1.0,  # 1 mm² in Y
+            0.001**2,  # 1 mm² variance in X (std dev = 1 mm)
+            0.001*2,  # 1 mm² in Y
             np.deg2rad(2.0)**2  # orientation known to within 0.5°
         ])
 
@@ -19,9 +19,9 @@ class KalmanFilter:
         # self.R = np.diag([2.0, 2.0, np.deg2rad(10.0)**2])        # measurement noise
 
         # self.Q = np.diag([0.5, 0.5, np.deg2rad(0.5)**2])   # Trust odometry more
-        self.Q = np.diag([4.0, 4.0, np.deg2rad(8.0)**2])
+        self.Q = np.diag([0.004, 0.004, np.deg2rad(8.0)**2])
 
-        self.R = np.diag([1, 1, np.deg2rad(2.0)**2])  # Camera is jumpy
+        self.R = np.diag([0.001, 0.001, np.deg2rad(2.0)**2])  # Camera is jumpy
 
 
 
@@ -31,8 +31,8 @@ class KalmanFilter:
 
         self.H = np.eye(3)
 
-        self.x_last = 0
-        self.y_last = 0
+        self.x_last = 0.0
+        self.y_last = 0.0
         self.theta_last = math.pi / 2
 
         self.mahalanobis_dist = None

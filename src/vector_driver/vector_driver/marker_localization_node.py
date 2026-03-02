@@ -26,7 +26,7 @@ import numpy as np
 from cv_bridge import CvBridge 
 import threading 
 import time
-from vector_driver.utils import wrap_angle_pi
+from vector_driver.utils import wrap_angle_pi, rotation_matrix_z
 from vector_driver.world import Marker_World
 # AprilTag 
 from pupil_apriltags import Detector
@@ -169,6 +169,17 @@ class Marker_Localization_Node(Node):
         
         # Pick closest marker
         _, best_tag_id, best_camera_in_global = min(pose_candidates, key=lambda x:x[0])
+
+
+        # ROS wants x forward and y left instead of x right and y forward
+        # Fix frame
+        # fix = np.eye(4)
+        # fix[:3,:3] = rotation_matrix_z(90)
+
+        # best_camera_in_global = fix @ best_camera_in_global
+
+
+
 
         r = R.from_matrix(best_camera_in_global[:3,:3])
         q = r.as_quat() # x,y,z, w

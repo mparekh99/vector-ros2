@@ -31,7 +31,8 @@ setup(
             # 'teleop = vector_driver.teleop:main',
             'marker_localization_node = vector_driver.marker_localization_node:main',
             'ekf_node = vector_driver.ekf_node:main',
-            # 'multi_topic_logger = vector_driver.multi_topic_logger:main',
+            'teleop_node = vector_driver.teleop_node:main',
+            'multi_topic_logger = vector_driver.multi_topic_logger:main',
 	        # 'workspace_visualizer_node = vector_driver.workspace_visualizer_node:main'
 	],
     },

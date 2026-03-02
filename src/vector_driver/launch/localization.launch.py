@@ -35,6 +35,14 @@ def generate_launch_description():
         ),
 
         # Node(
+        #     package='vector_driver',
+        #     executable='multi_topic_logger',
+        #     name='multi_topic_logger',
+        #     output='screen'
+        # ),
+
+
+        # Node(
         #     package='robot_localization',
         #     executable='ekf_node',
         #     name='ekf_local',

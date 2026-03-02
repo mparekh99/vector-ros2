@@ -190,18 +190,18 @@ class VectorNode(Node):
 
         odom_msg.twist.covariance = np.diag([1e-2,1e3, 1e3,1e3, 1e3, 1e-2]).ravel()
 
-        t = TransformStamped()
-        t.header.stamp = now.to_msg()
-        t.header.frame_id = 'odom'
-        t.child_frame_id = 'base_footprint'
-        t.transform.translation.x = self.x
-        t.transform.translation.y = self.y
-        t.transform.translation.z = 0.0
-        t.transform.rotation.x = q[0]
-        t.transform.rotation.y = q[1]
-        t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[3]
-        self.tf_broadcaster.sendTransform(t)
+        # t = TransformStamped()
+        # t.header.stamp = now.to_msg()
+        # t.header.frame_id = 'odom'
+        # t.child_frame_id = 'base_footprint'
+        # t.transform.translation.x = self.x
+        # t.transform.translation.y = self.y
+        # t.transform.translation.z = 0.0
+        # t.transform.rotation.x = q[0]
+        # t.transform.rotation.y = q[1]
+        # t.transform.rotation.z = q[2]
+        # t.transform.rotation.w = q[3]
+        # self.tf_broadcaster.sendTransform(t)
 
 
         #(vRight - vLeft) / WHEELBASE didn't give good values 

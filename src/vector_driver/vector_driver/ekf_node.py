@@ -37,6 +37,7 @@ class EKFNode(Node):
         
         self.last_odom_time = None
 
+
         # QoS Profile
         camera_qos = QoSProfile(
             reliability=ReliabilityPolicy.BEST_EFFORT,
@@ -57,6 +58,10 @@ class EKFNode(Node):
             camera_qos
         )
 
+
+        # Timer EKF Loop -- 100 hz 100 times a second
+        self.timer = self.create_timer(0.01, self.filter_loop)
+
         self.tf_broadcaster = TransformBroadcaster(self)
 
 
@@ -70,25 +75,50 @@ class EKFNode(Node):
         dt = t_now - self.last_odom_time
         self.last_odom_time = t_now
 
-        v = msg.twist.twist.linear.x  * 1000  # m/s -> mm/s
+        v = msg.twist.twist.linear.x
         omega = msg.twist.twist.angular.z
 
         # KALMAN  
-        self.kf.initial_predict(v, dt, omega)
+        x, y, theta = self.kf.initial_predict(v, dt, omega)
+
+        print(x,y,theta)
+
+        # # Publish to TF
+
+        # t = TransformStamped()
+        # t.header.stamp = msg.header.stamp
+        # t.header.frame_id = "map"
+        # t.child_frame_id = "odom"
+
+        # t.transform.translation.x = x
+        # t.transform.translation.y = y
+        # t.transform.translation.z = 0.0
+        # q = quaternion_from_euler(0.0, 0.0, theta)
+        # t.transform.rotation.x = q[0]
+        # t.transform.rotation.y = q[1]
+        # t.transform.rotation.z = q[2]
+        # t.transform.rotation.w = q[3]
+
+        # self.tf_broadcaster.sendTransform(t)
+
+
 
     
 
     # Update 
     def cam_callback(self, msg: PoseWithCovarianceStamped):
         # Get reaidng 
-        x = msg.pose.pose.position.x * 1000 # Convert it to mm 
-        y = msg.pose.pose.position.y * 1000
+        x = msg.pose.pose.position.x 
+        y = msg.pose.pose.position.y 
         q_msg = msg.pose.pose.orientation
 
         r = R.from_quat([q_msg.x, q_msg.y, q_msg.z, q_msg.w])
         R_mat = r.as_matrix()
 
-        theta = wrap_angle_pi(math.atan2(-R_mat[0,0], R_mat[1,0] + math.pi))
+        # theta = quaternion_to_yaw(q_msg)
+        theta = wrap_angle_pi(math.atan2(-R_mat[0,0], R_mat[1,0]) + math.pi)
+
+        # print(theta)
 
         x_f, y_f, theta_f, valid_reading = self.kf.update(x,y,theta)
 
@@ -98,9 +128,10 @@ class EKFNode(Node):
             pose_msg.header.stamp = msg.header.stamp
             pose_msg.header.frame_id = 'map'
 
-            pose_msg.pose.position.x = valid_reading[0] * 0.001 #CONVERT FROM MM to METERS!!!
-            pose_msg.pose.position.y = valid_reading[1] * 0.001
+            pose_msg.pose.position.x = valid_reading[0]
+            pose_msg.pose.position.y = valid_reading[1]
             pose_msg.pose.position.z = 0.0
+            
             q = quaternion_from_euler(.0, .0, valid_reading[2])
             pose_msg.pose.orientation.x = q[0]
             pose_msg.pose.orientation.y = q[1]
@@ -110,25 +141,74 @@ class EKFNode(Node):
 
             self.cam_filter_pub.publish(pose_msg)
 
+            # print(valid_reading[0], valid_reading[1])
+
+
+            # t = TransformStamped()
+
+            # t.header.stamp = msg.header.stamp
+            # t.header.frame_id = "map"
+            # t.child_frame_id = "odom"
+
+            # t.transform.translation.x = valid_reading[0]
+            # t.transform.translation.y = valid_reading[1]
+            # t.transform.translation.z = 0.0
+            # t.transform.rotation.x = q[0]
+            # t.transform.rotation.y = q[1]
+            # t.transform.rotation.z = q[2]
+            # t.transform.rotation.w = q[3]
+
+            # self.tf_broadcaster.sendTransform(t)
+
+        
+
 
         # # Publish 
 
+        # t = TransformStamped()
+
+        # t.header.stamp = msg.header.stamp
+        # t.header.frame_id = "map"
+        # t.child_frame_id = "odom"
+
+        # t.transform.translation.x = x_f
+        # t.transform.translation.y = y_f
+        # t.transform.translation.z = 0.0
+        # q = quaternion_from_euler(.0, .0, theta_f)
+        # t.transform.rotation.x = q[0]
+        # t.transform.rotation.y = q[1]
+        # t.transform.rotation.z = q[2]
+        # t.transform.rotation.w = q[3]
+
+        # self.tf_broadcaster.sendTransform(t)
+
+
+    def filter_loop(self):
+
         t = TransformStamped()
 
-        t.header.stamp = msg.header.stamp
+        t.header.stamp = self.get_clock().now().to_msg()
         t.header.frame_id = "map"
-        t.child_frame_id = "odom"
+        t.child_frame_id = "base_footprint"
 
-        t.transform.translation.x = x_f * 0.001
-        t.transform.translation.y = y_f * 0.002
+        # Convert to ROS Frame (ROS2 like x forward, y left) 
+        # I currently did evyerthing with x right and y forward
+
+    
+
+        t.transform.translation.x = self.kf.x_last
+        t.transform.translation.y = self.kf.y_last
         t.transform.translation.z = 0.0
-        q = quaternion_from_euler(.0, .0, theta)
+        q = quaternion_from_euler(.0, .0, self.kf.theta_last)
         t.transform.rotation.x = q[0]
         t.transform.rotation.y = q[1]
         t.transform.rotation.z = q[2]
-        t.transform.rotation.w = q[0]
+        t.transform.rotation.w = q[3]
 
         self.tf_broadcaster.sendTransform(t)
+
+
+        
 
 def main(args=None):
     rclpy.init(args=args)

@@ -11,6 +11,8 @@ import os
 from datetime import datetime
 from tf_transformations import euler_from_quaternion
 from rclpy.qos import qos_profile_sensor_data
+from vector_driver.utils import wrap_angle_pi
+import math
 
 def quaternion_to_yaw(q):
     euler = euler_from_quaternion([q.x, q.y, q.z, q.w])
@@ -78,22 +80,28 @@ class MultiTopicLogger(Node):
         return now.sec + now.nanosec * 1e-9
 
     def log_pose_stamped(self, topic_name, msg):
-        x = msg.pose.pose.position.x * 1000
-        y = msg.pose.pose.position.y * 1000 
-        yaw = quaternion_to_yaw(msg.pose.pose.orientation)
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y
+        theta = quaternion_to_yaw(msg.pose.pose.orientation)
+
+        x_ros = y
+        y_ros = -1 * x
+        theta_ros = wrap_angle_pi(theta - math.pi)
+
+        
 
 
         self.csv_writer.writerow([
             self.current_time(),
             topic_name,
-            x,
-            y,
-            yaw,
+            x_ros,
+            y_ros,
+            theta_ros,
         ])
 
     def log_odometry(self, topic_name, msg):
-        x = msg.pose.pose.position.x * 1000
-        y = msg.pose.pose.position.y * 1000
+        x = msg.pose.pose.position.x
+        y = msg.pose.pose.position.y 
         yaw = quaternion_to_yaw(msg.pose.pose.orientation)
 
         self.csv_writer.writerow([
@@ -110,8 +118,8 @@ class MultiTopicLogger(Node):
         self.log_pose_stamped('/camera/pose_msg', msg)
 
     def camera_filtered_callback(self, msg):
-        x = msg.pose.position.x * 1000
-        y = msg.pose.position.y * 1000
+        x = msg.pose.position.x 
+        y = msg.pose.position.y
         q = msg.pose.orientation
         yaw = quaternion_to_yaw(q)
 
@@ -143,8 +151,8 @@ class MultiTopicLogger(Node):
             self.csv_writer.writerow([
                 self.current_time(),
                 'tf_map_to_odom',
-                t.x * 1000,
-                t.y * 1000,
+                t.x,
+                t.y,
                 yaw,
             ])
 

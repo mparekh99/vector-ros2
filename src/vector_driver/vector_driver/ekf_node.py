@@ -37,6 +37,10 @@ class EKFNode(Node):
         
         self.last_odom_time = None
 
+        self.dead_reckon_x = 0.0
+        self.dead_reckon_y = 0.0
+        self.dead_reckon_theta = 0.0
+
 
         # QoS Profile
         camera_qos = QoSProfile(
@@ -78,28 +82,13 @@ class EKFNode(Node):
         v = msg.twist.twist.linear.x
         omega = msg.twist.twist.angular.z
 
-        # KALMAN  
         x, y, theta = self.kf.initial_predict(v, dt, omega)
 
-        print(x,y,theta)
 
-        # # Publish to TF
-
-        # t = TransformStamped()
-        # t.header.stamp = msg.header.stamp
-        # t.header.frame_id = "map"
-        # t.child_frame_id = "odom"
-
-        # t.transform.translation.x = x
-        # t.transform.translation.y = y
-        # t.transform.translation.z = 0.0
-        # q = quaternion_from_euler(0.0, 0.0, theta)
-        # t.transform.rotation.x = q[0]
-        # t.transform.rotation.y = q[1]
-        # t.transform.rotation.z = q[2]
-        # t.transform.rotation.w = q[3]
-
-        # self.tf_broadcaster.sendTransform(t)
+        self.dead_reckon_x = msg.pose.pose.position.x
+        self.dead_reckon_y = msg.pose.pose.position.y
+        q_msg = msg.pose.pose.orientation
+        self.dead_reckon_theta = quaternion_to_yaw(q_msg)
 
 
 
@@ -212,6 +201,30 @@ class EKFNode(Node):
         t.transform.rotation.w = q[3]
 
         self.tf_broadcaster.sendTransform(t)
+
+
+
+        # Map -> ODOM for nav2 
+        odom_tf = TransformStamped()
+        odom_tf.header.stamp = t.header.stamp
+        odom_tf.header.frame_id = "map"
+        odom_tf.child_frame_id = "odom"
+
+        # Difference between EKF output and /odom 
+        dx = x_ros - self.dead_reckon_x
+        dy = y_ros - self.dead_reckon_y
+        dtheta = theta_ros - self.dead_reckon_theta
+
+        odom_tf.transform.translation.x = dx
+        odom_tf.transform.translation.y = dy
+        odom_tf.transform.translation.z = 0.0
+        q = quaternion_from_euler(.0, .0, dtheta)
+        odom_tf.transform.rotation.x = q[0]
+        odom_tf.transform.rotation.y = q[1]
+        odom_tf.transform.rotation.z = q[2]
+        odom_tf.transform.rotation.w = q[3]
+
+        self.tf_broadcaster.sendTransform(odom_tf)
 
 
         

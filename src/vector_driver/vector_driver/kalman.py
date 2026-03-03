@@ -19,9 +19,9 @@ class KalmanFilter:
         # self.R = np.diag([2.0, 2.0, np.deg2rad(10.0)**2])        # measurement noise
 
         # self.Q = np.diag([0.5, 0.5, np.deg2rad(0.5)**2])   # Trust odometry more
-        self.Q = np.diag([0.004, 0.004, np.deg2rad(8.0)**2])
+        self.Q = np.diag([0.002, 0.002, np.deg2rad(5.0)**2])
 
-        self.R = np.diag([0.001, 0.001, np.deg2rad(2.0)**2])  # Camera is jumpy
+        self.R = np.diag([0.04, 0.04, np.deg2rad(1.2)**2])  # Camera is jumpy
 
 
 
@@ -89,7 +89,7 @@ class KalmanFilter:
         self.mahalanobis_dist = y_k.T @ S_inv @ y_k
 
         # Threshold can be tuned; for 3D, 95% confidence ~7.81 (chi-square)
-        if self.mahalanobis_dist > 20:
+        if self.mahalanobis_dist > 12:  #shrunk from 20
             # Reject measurement as outlier, skip update
             # print(f"Measurement rejected: Mahalanobis dist = {self.mahalanobis_dist:.2f}")
             return self.x_last, self.y_last, self.theta_last, None

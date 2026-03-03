@@ -1,0 +1,55 @@
+# nav2.yaml - Minimal configuration for Vector 1m x 1m map
+# Place in vector_driver/config folder
+
+planner_server:
+  ros__parameters:
+    expected_planner_frequency: 1.0
+    planner_plugins: ["GridBased"]
+    GridBased:
+      plugin: "nav2_navfn_planner/NavfnPlanner"
+
+controller_server:
+  ros__parameters:
+    expected_controller_frequency: 10.0
+    controller_plugins: ["FollowPath"]
+    FollowPath:
+      plugin: "dwb_core::DWBLocalPlanner"
+      max_vel_x: 0.2   # meters/sec
+      min_vel_x: 0.0
+      max_vel_theta: 1.0   # rad/sec
+      min_vel_theta: -1.0
+      acc_lim_x: 0.5
+      acc_lim_theta: 1.0
+      vx_samples: 3
+      vtheta_samples: 20
+      controller_frequency: 10.0
+      path_distance_bias: 32.0
+      goal_distance_bias: 24.0
+
+global_costmap:
+  ros__parameters:
+    global_frame: "map"
+    robot_base_frame: "base_footprint"
+    update_frequency: 1.0
+    publish_frequency: 1.0
+    static_map: true
+    rolling_window: false
+    width: 1.0
+    height: 1.0
+    resolution: 0.01
+
+local_costmap:
+  ros__parameters:
+    global_frame: "map"
+    robot_base_frame: "base_footprint"
+    update_frequency: 5.0
+    publish_frequency: 2.0
+    static_map: true
+    rolling_window: true
+    width: 1.2
+    height: 1.2
+    resolution: 0.01
+
+bt_navigator:
+  ros__parameters:
+    default_bt_xml_filename: ""

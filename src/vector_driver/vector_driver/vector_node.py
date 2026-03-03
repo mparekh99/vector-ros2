@@ -4,6 +4,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, ReliabilityPolicy, HistoryPolicy
 from rclpy.qos import qos_profile_sensor_data
+from rclpy.callback_groups import ReentrantCallbackGroup
 
 
 from sensor_msgs.msg import Imu, Image, BatteryState
@@ -13,6 +14,7 @@ import tf2_ros
 from geometry_msgs.msg import TransformStamped, Twist
 from sensor_msgs.msg import JointState 
 from tf_transformations import quaternion_from_euler
+
 
 # quat converter 
 from scipy.spatial.transform import Rotation as R 
@@ -30,6 +32,11 @@ import numpy as np
 from cv_bridge import CvBridge 
 import threading 
 import time
+from concurrent.futures import ThreadPoolExecutor
+
+
+
+
 # Constants 
 WHEELBASE = 0.05 # in meters 
 # WHEELBASE = 0.06
@@ -49,6 +56,12 @@ MAX_WHEEL_SPEED_MMPS = 230
 class VectorNode(Node):
     def __init__(self):
         super().__init__('vector_node')
+
+        # Does all my sdk calls for me 
+        self.sdk_executor = ThreadPoolExecutor(max_workers=4)
+        self.cmd_lock = threading.Lock()
+
+        self.callback_group = ReentrantCallbackGroup()
 
         # QoS Profile
         camera_qos = QoSProfile(
@@ -94,19 +107,26 @@ class VectorNode(Node):
         self.theta = math.pi / 2
         self.last_time = self.get_clock().now() # ROS2 time
 
+        self.linear_mmps = 0.0
+        self.angular_mmps = 0.0
+
         # # Timer to periodically publish
         # self.timer = self.create_timer(0.1, self.publish_sensors) # 10 Hz
 
         # Timers ------
         # 50 times per second
-        self.odom_timer = self.create_timer(0.02, self.publish_odom) # 50 Hz
+        # self.odom_timer = self.create_timer(0.02, self.publish_odom) # 50 Hz
         
-        # IMU
-        self.imu_timer = self.create_timer(0.01, self.publish_imu) # 100Hz
+        # # IMU
+        # self.imu_timer = self.create_timer(0.01, self.publish_imu) # 100Hz
 
-        # Joint states 
-        self.joint_timer = self.create_timer(0.1, self.publish_joints) # 10 HZ
+        # # Joint states 
+        # self.joint_timer = self.create_timer(0.1, self.publish_joints) # 10 HZ
 
+        # allows multiple timers to run concurrrently without blocking 
+        self.odom_timer = self.create_timer(0.02, self.publish_odom, callback_group=self.callback_group)
+        self.imu_timer = self.create_timer(0.01, self.publish_imu, callback_group=self.callback_group)
+        self.joint_timer = self.create_timer(0.1, self.publish_joints, callback_group=self.callback_group)
     
         # Subscriber for velocity commands
         self.cmd_sub = self.create_subscription(
@@ -121,12 +141,14 @@ class VectorNode(Node):
 
     def on_new_camera_image(self, robot, event_type, event, done=None):
 
-        # if event.image is None:
-        #     self.get_logger().warn("Recieved camera but no image")
-        #     return
-        # self.get_logger().info("HELLOO")
+        # So sdk callback never blocks main thread
+        self.sdk_executor.submit(self._publish_camera, event.image)
 
-        frame_np = np.array(event.image)
+
+    def _publish_camera(self, image):
+        
+        # Handle the image
+        frame_np = np.array(image)
         frame_np = cv2.cvtColor(frame_np, cv2.COLOR_RGB2BGR)
 
         img_msg = self.bridge.cv2_to_imgmsg(frame_np, encoding='bgr8')
@@ -138,16 +160,20 @@ class VectorNode(Node):
 
 
     def cmd_vel_callback(self, msg:Twist):
-        linear_mmps = msg.linear.x * 1000.0 # Convert m/s to mm/s
-        angular_mmps = msg.angular.z * 1000.0
+        self.linear_mmps = msg.linear.x
+        self.angular_mmps = msg.angular.z
 
-        left_wheel = linear_mmps - (angular_mmps * WHEELBASE / 2)
-        right_wheel = linear_mmps + (angular_mmps * WHEELBASE / 2)
+        linear_mmps = self.linear_mmps
+        angular_mmps = self.angular_mmps
+
+        left_wheel = (linear_mmps - (angular_mmps * WHEELBASE / 2)) * 1000
+        right_wheel = (linear_mmps + (angular_mmps * WHEELBASE / 2)) * 1000
 
         left_wheel = max(min(left_wheel, MAX_WHEEL_SPEED_MMPS), -MAX_WHEEL_SPEED_MMPS)
         right_wheel = max(min(right_wheel, MAX_WHEEL_SPEED_MMPS), -MAX_WHEEL_SPEED_MMPS)
 
-        self.robot.motors.set_wheel_motors(left_wheel, right_wheel)
+        with self.cmd_lock:
+            self.sdk_executor.submit(self.robot.motors.set_wheel_motors(left_wheel, right_wheel))
 
 
     def publish_odom(self):
@@ -170,16 +196,21 @@ class VectorNode(Node):
         self.y = self.y + v * math.sin(theta_k) * dt
         self.theta = theta_k
 
+        # CHANGE FOR ROS2 INTEGRATIONs
+
+        x_ros = self.y
+        y_ros = -1 * self.x
+        theta_ros = wrap_angle_pi(self.theta - math.pi/2)
 
 
         odom_msg = Odometry()
         odom_msg.header.stamp = now.to_msg()
         odom_msg.header.frame_id = 'odom'
         odom_msg.child_frame_id = 'base_footprint'
-        odom_msg.pose.pose.position.x = self.x
-        odom_msg.pose.pose.position.y = self.y
+        odom_msg.pose.pose.position.x = x_ros
+        odom_msg.pose.pose.position.y = y_ros
         odom_msg.pose.pose.position.z = 0.0
-        q = quaternion_from_euler(.0, .0, self.theta)
+        q = quaternion_from_euler(.0, .0, theta_ros)
         odom_msg.pose.pose.orientation.x = q[0]
         odom_msg.pose.pose.orientation.y = q[1]
         odom_msg.pose.pose.orientation.z = q[2]
@@ -194,8 +225,8 @@ class VectorNode(Node):
         # t.header.stamp = now.to_msg()
         # t.header.frame_id = 'odom'
         # t.child_frame_id = 'base_footprint'
-        # t.transform.translation.x = self.x
-        # t.transform.translation.y = self.y
+        # t.transform.translation.x = x_ros
+        # t.transform.translation.y = y_ros
         # t.transform.translation.z = 0.0
         # t.transform.rotation.x = q[0]
         # t.transform.rotation.y = q[1]

@@ -13,6 +13,14 @@ def generate_launch_description():
             arguments=['-0.01','0','0.027','0','0','0', 'base_footprint', 'base_link']
         ),
 
+        # Node(
+        #     package='tf2_ros',
+        #     executable='static_transform_publisher',
+        #     name='map_to_odom',
+        #     arguments=['0','0','0','0','0','0', 'map', 'odom']
+        # ),
+
+
         Node(
             package='vector_driver',
             executable='vector_node',
@@ -34,58 +42,51 @@ def generate_launch_description():
             output='screen'
         ),
 
-        # Node(
-        #     package='vector_driver',
-        #     executable='multi_topic_logger',
-        #     name='multi_topic_logger',
-        #     output='screen'
-        # ),
 
+        Node(
+            package='vector_driver',
+            executable='multi_topic_logger',
+            name='multi_topic_logger',
+            output='screen'
+        ),
 
         # Node(
-        #     package='robot_localization',
-        #     executable='ekf_node',
-        #     name='ekf_local',
+        #     package='nav2_map_server',
+        #     executable='map_server',
+        #     name='map_server',
         #     output='screen',
-        #     parameters=['/home/mihir/ROS2_PROJ/vector_ws/src/vector_driver/config/ekf_local.yaml'],
-        #     remappings=[('odometry/filtered', 'odometry/local')]
+        #     parameters=[{
+        #         'yaml_filename':'/home/mihir/ROS2_PROJ/vector_ws/src/vector_driver/config/map.yaml'
+        #     }]
         # ),
-
-
+        
         # Node(
-        #     package='vector_driver',
-        #     executable='test_logger_node',
-        #     name='test_logger_node',
+        #     package='nav2_planner',
+        #     executable='planner_server',
+        #     name='planner_server',
         #     output='screen',
+        #     parameters=['/home/mihir/ROS2_PROJ/vector_ws/src/vector_driver/config/nav2.yaml']
         # ),
 
         # Node(
-        #     package='vector_driver',
-        #     executable='drive_square',
-        #     name='drive_square',
+        #     package='nav2_controller',
+        #     executable='controller_server',
+        #     name='controller_server',
         #     output='screen',
+        #     parameters=['/home/mihir/ROS2_PROJ/vector_ws/src/vector_driver/config/nav2.yaml']
         # ),
 
         # Node(
-        #     package='robot_localization',
-        #     executable='ekf_node',
-        #     name='ekf_global',
+        #     package='nav2_lifecycle_manager',
+        #     executable='lifecycle_manager',
+        #     name='lifecycle_manager_navigation',
         #     output='screen',
-        #     parameters=['/home/mihir/ROS2_PROJ/vector_ws/src/vector_driver/config/ekf_global.yaml'],
-        #     remappings=[('odometry/filtered', 'odometry/global')]
+        #     parameters=[{
+        #         'use_sim_time': False, 
+        #         'autostart': True, 
+        #         'node_names': ['map_server', 'planner_server', 'controller_server']
+        #     }]
         # ),
 
-        # Node(
-        #     package='vector_driver',
-        #     executable='multi_topic_logger',
-        #     name='multi_topic_logger',
-        #     output='screen'
-        # ),
-
-        # Shut down after 10 seconds 
-        # TimerAction(
-        #     period=30.0, #seconds
-        #     actions=[Shutdown()]
-        # )
 
     ])

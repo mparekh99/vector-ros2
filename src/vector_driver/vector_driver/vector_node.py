@@ -300,23 +300,30 @@ class VectorNode(Node):
 
         now = self.get_clock().now()
 
-        lift_pos = 0.0
+        # lift_pos = 0.0
 
-        if self.cmd_lift is not None:
-            scale = self.get_parameter("lift_height_to_angle_scale").get_parameter_value().double_value
-            offset = self.get_parameter("lift_height_to_angle_offset").get_parameter_value().double_value
-            lift_pos = self.cmd_lift * scale + offset
+        # if self.cmd_lift is not None:
+        #     scale = self.get_parameter("lift_height_to_angle_scale").get_parameter_value().double_value
+        #     offset = self.get_parameter("lift_height_to_angle_offset").get_parameter_value().double_value
+        #     lift_m = LIFT_MIN_M + self.cmd_lift * (LIFT_MAX_M - LIFT_MIN_M)
 
-        else:
-            lift_m = self.robot.lift_height_mm / 1000.0
-            lift_pos = lift_m * LIFT_SCALE + LIFT_OFFSET
+        # else:
+        #     lift_m = self.robot.lift_height_mm / 1000.0
+
+        # lift_pos = lift_m * LIFT_SCALE + LIFT_OFFSET
+
+        # head_angle = self.robot.head_angle_rad * HEAD_SCALE + HEAD_OFFSET
+
+
+        lift_m = self.robot.lift_height_mm / 1000.0
+        lift_pos = lift_m * LIFT_SCALE + LIFT_OFFSET
 
         head_angle = self.robot.head_angle_rad * HEAD_SCALE + HEAD_OFFSET
 
         js = JointState()
         js.header.stamp = now.to_msg()
         js.name = ['base_to_head', 'base_to_lift']
-        js.header.frame_id = 'base_link'
+        # js.header.frame_id = 'base_link'
         js.position = [head_angle, lift_pos]
         self.joint_pub.publish(js)
 

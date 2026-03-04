@@ -7,12 +7,11 @@ from rclpy.qos import qos_profile_sensor_data
 from rclpy.callback_groups import ReentrantCallbackGroup
 
 
-from sensor_msgs.msg import Imu, Image, BatteryState
+from sensor_msgs.msg import Imu, Image, BatteryState, JointState, Range
 from nav_msgs.msg import Odometry
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Float64
 import tf2_ros
 from geometry_msgs.msg import TransformStamped, Twist
-from sensor_msgs.msg import JointState 
 from tf_transformations import quaternion_from_euler
 
 
@@ -33,6 +32,7 @@ from cv_bridge import CvBridge
 import threading 
 import time
 from concurrent.futures import ThreadPoolExecutor
+
 
 
 
@@ -74,9 +74,13 @@ class VectorNode(Node):
         self.imu_pub = self.create_publisher(Imu, '/imu/data', 10)
         # self.imu_pub = self.create_publisher(Imu, '/imu/data', qos_profile_sensor_data)
         self.odom_pub = self.create_publisher(Odometry, '/odom', 10)
-        self.joint_pub = self.create_publisher(JointState, '/joint_states', 10)
         # self.batt_pub = self.create_publisher(BatteryState, '/battery_state', 10)
         self.camera_pub = self.create_publisher(Image, '/camera/image_raw', camera_qos)
+
+        self.joint_pub = self.create_publisher(JointState, '/joint_states', 10)
+
+        self.range_pub = self.create_publisher(Range, '/proximity/range',10)
+
 
         # TF Broadcaster 
         self.tf_broadcaster = tf2_ros.TransformBroadcaster(self)
@@ -127,7 +131,12 @@ class VectorNode(Node):
         self.odom_timer = self.create_timer(0.02, self.publish_odom, callback_group=self.callback_group)
         self.imu_timer = self.create_timer(0.01, self.publish_imu, callback_group=self.callback_group)
         self.joint_timer = self.create_timer(0.1, self.publish_joints, callback_group=self.callback_group)
-    
+        self.range_timer = self.create_timer(0.1, self.publish_range, callback_group=self.callback_group)
+
+
+
+
+
         # Subscriber for velocity commands
         self.cmd_sub = self.create_subscription(
             Twist,
@@ -136,8 +145,29 @@ class VectorNode(Node):
             10
         )
 
+        self.cmd_lift = None
+        self.declare_parameter("lift_height_to_angle_scale", LIFT_SCALE)
+        self.declare_parameter("lift_height_to_angle_offset", LIFT_OFFSET)
+        self.declare_parameter("head_angle_scale", HEAD_SCALE)
+        self.declare_parameter("head_angle_offset", HEAD_OFFSET)
+        self.declare_parameter("joint_lift_name", "base_to_lift")
+        self.declare_parameter("joint_head_name", "base_to_head")
 
 
+
+        # Lift controller subscriber 
+        self.lift_sub = self.create_subscription(
+            Float64, 
+            '/lift_controller/command',
+            self.lift_callback,
+            10
+        )
+
+
+    def lift_callback(self, msg: Float64):
+        lift_val = max(0.0, min(1.0, msg.data))
+        self.cmd_lift = lift_val
+        self.robot.behavior.set_lift_height(lift_val)
 
     def on_new_camera_image(self, robot, event_type, event, done=None):
 
@@ -270,23 +300,55 @@ class VectorNode(Node):
 
         now = self.get_clock().now()
 
-        # ---- JointStates ----
-        lift_m = self.robot.lift_height_mm / 1000.0
-        lift_angle = lift_m * LIFT_SCALE + LIFT_OFFSET
-        # clamp angle 
-        lift_angle = max(
-            min(lift_angle, LIFT_MAX_M * LIFT_SCALE + LIFT_OFFSET), 
-            LIFT_MIN_M * LIFT_SCALE + LIFT_OFFSET
-        )
+        lift_pos = 0.0
+
+        if self.cmd_lift is not None:
+            scale = self.get_parameter("lift_height_to_angle_scale").get_parameter_value().double_value
+            offset = self.get_parameter("lift_height_to_angle_offset").get_parameter_value().double_value
+            lift_pos = self.cmd_lift * scale + offset
+
+        else:
+            lift_m = self.robot.lift_height_mm / 1000.0
+            lift_pos = lift_m * LIFT_SCALE + LIFT_OFFSET
 
         head_angle = self.robot.head_angle_rad * HEAD_SCALE + HEAD_OFFSET
 
         js = JointState()
         js.header.stamp = now.to_msg()
         js.name = ['base_to_head', 'base_to_lift']
-        js.position = [head_angle, lift_angle]
         js.header.frame_id = 'base_link'
+        js.position = [head_angle, lift_pos]
         self.joint_pub.publish(js)
+
+
+    def publish_range(self):
+        
+        proximity = self.robot.proximity.last_sensor_reading
+
+        if proximity is not None:
+
+            now = self.get_clock().now()
+
+            range_msg = Range()
+            range_msg.header.stamp = now.to_msg()
+            range_msg.header.frame_id = 'tof_link'
+            range_msg.radiation_type = Range.INFRARED
+            range_msg.min_range = 0.03
+            range_msg.max_range = 1.2
+
+            if hasattr(proximity, "distance") and proximity.distance is not None:
+                dist_mm = getattr(proximity.distance, "distance_mm", None)
+                if dist_mm is not None:
+                    range_msg.range = dist_mm / 1000.0
+            
+            self.range_pub.publish(range_msg)
+
+
+
+
+
+
+
 
 
 def main(args=None):

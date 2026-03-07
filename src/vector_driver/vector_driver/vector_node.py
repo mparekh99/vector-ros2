@@ -38,7 +38,7 @@ from concurrent.futures import ThreadPoolExecutor
 
 
 # Constants 
-WHEELBASE = 0.05 # in meters 
+WHEELBASE = 0.048 # in meters 
 # WHEELBASE = 0.06
 # Config from launch file
 LIFT_SCALE = -13.7931034483

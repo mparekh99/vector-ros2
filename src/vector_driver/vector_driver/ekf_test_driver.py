@@ -1,8 +1,18 @@
 #!/usr/bin/env python3
 import rclpy
 from rclpy.node import Node
-from geometry_msgs.msg import Twist
+from geometry_msgs.msg import Twist, Quaternion
+from nav_msgs.msg import Odometry
+from vector_driver.utils import wrap_angle_pi
+from tf_transformations import euler_from_quaternion
 import math
+
+def quaternion_to_yaw(q: Quaternion) -> float:
+    """
+    Convert geometry_msgs/Quaternion to yaw (in radians)
+    """
+    euler = euler_from_quaternion([q.x, q.y, q.z, q.w])
+    return euler[2]  # yaw
 
 class EKFTestDriver(Node):
     def __init__(self):
@@ -11,66 +21,88 @@ class EKFTestDriver(Node):
         # Publisher for velocity commands
         self.cmd_pub = self.create_publisher(Twist, '/cmd_vel', 10)
 
-        # Test parameters
-        self.side_length_m = 0.3       # 300 mm per side
-        self.linear_speed_mps = 0.05   # 50 mm/s
-        self.turn_speed_rps = math.pi / 2  # 22.5 deg/s ~ 0.3927 rad/s
+        self.odom_sub = self.create_subscription(
+            Odometry,
+            '/odom',
+            self.odom_callback,
+            10
+        )
 
-        # State
-        self.phase = 0  # 0 = moving straight, 1 = turning
-        self.distance_travelled = 0.0
-        self.angle_turned = 0.0
+        # Robot State
+        self.x = None
+        self.y = None 
+        self.theta = None 
+
+        # Square param 
+        self.side_length = 0.1 # 300 mm 
+        self.turn_angle = math.pi / 2 
+        
+        self.linear_speed = 0.05
+        self.angular_speed = 0.7 
+
+        # State machine 
+
+        self.phase = "forward"
         self.current_side = 0
-        self.total_sides = 4
-        self.last_time = self.get_clock().now()
+        
+        self.start_x = None 
+        self.start_y = None 
+        self.start_theta = None 
 
-        # Timer
-        self.timer_period = 0.05  # 20 Hz
-        self.timer = self.create_timer(self.timer_period, self.run_square)
+        self.timer = self.create_timer(0.02, self.control_loop)
 
-        self.get_logger().info("EKF Test Driver started. Driving square 0.3m per side.")
 
-    def run_square(self):
-        now = self.get_clock().now()
-        dt = (now - self.last_time).nanoseconds * 1e-9
-        self.last_time = now
+    def odom_callback(self, msg):
+        self.x = msg.pose.pose.position.x
+        self.y = msg.pose.pose.position.y
 
+        q = msg.pose.pose.orientation
+
+        self.theta = quaternion_to_yaw(q)
+
+    def control_loop(self):
+
+        if self.x is None: 
+            return 
+        
         msg = Twist()
 
-        if self.current_side >= self.total_sides:
-            # Finished square
-            self.stop_robot()
-            self.get_logger().info("Square complete. Robot stopped.")
+        if self.current_side >= 4:
+            self.cmd_pub.publish(Twist())
+            self.get_logger().info("Square Complete")
             return
 
-        if self.phase == 0:
-            # Move straight
-            self.distance_travelled += self.linear_speed_mps * dt
-            if self.distance_travelled >= self.side_length_m:
-                self.distance_travelled = 0.0
-                self.phase = 1  # start turning
-            else:
-                msg.linear.x = self.linear_speed_mps
-                msg.angular.z = 0.0
+        if self.phase == "forward":
+            
+            if self.start_x is None:
+                self.start_x = self.x 
+                self.start_y = self.y 
 
-        elif self.phase == 1:
-            # Turn left 90 degrees
-            self.angle_turned += self.turn_speed_rps * dt
-            if self.angle_turned >= math.pi:
-                self.angle_turned = 0.0
-                self.phase = 0  # start next side
-                self.current_side += 1
+            dist = math.sqrt(
+                (self.x - self.start_x) ** 2 + 
+                (self.y - self.start_y) ** 2
+            )
+
+            if dist >= self.side_length:
+                self.phase = "turn"
+                self.start_theta = self.theta
+                self.start_x = None 
+                self.start_y = None 
             else:
-                msg.linear.x = 0.0
-                msg.angular.z = self.turn_speed_rps
+                msg.linear.x = self.linear_speed 
+        
+        elif self.phase == "turn":
+            delta = wrap_angle_pi(self.theta - self.start_theta)
+
+            if abs(delta) >= self.turn_angle:
+                self.phase = "forward"
+                self.current_side += 1
+
+                self.start_theta = None
+            else:
+                msg.angular.z = self.angular_speed
 
         self.cmd_pub.publish(msg)
-
-    def stop_robot(self):
-        stop_msg = Twist()
-        stop_msg.linear.x = 0.0
-        stop_msg.angular.z = 0.0
-        self.cmd_pub.publish(stop_msg)
 
 
 def main(args=None):
@@ -80,11 +112,11 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        node.get_logger().info("KeyboardInterrupt detected. Stopping robot...")
-        node.stop_robot()
-    finally:
-        node.destroy_node()
-        rclpy.shutdown()
+        pass
+    
+    node.cmd_pub.publish(Twist())
+    node.destroy_node()
+    rclpy.shutdown()
 
 
 if __name__ == "__main__":
